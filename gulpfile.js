@@ -14,54 +14,57 @@ var gulp = require('gulp'),
   watch = require('gulp-watch'),
   autoprefixer = require('gulp-autoprefixer');
 
-gulp.task('express', function() {
+gulp.task('express', function (done) {
   var app = express();
   app.use(connectlivereload({ port: 35729 }));
   app.use(express.static('./dist'));
   var port = 4000;
-  app.listen(port, '0.0.0.0', function(){
+  app.listen(port, '0.0.0.0', function () {
     console.log('App running and listening on port', port);
+    done();
   });
 });
 
 var tinylr;
 
-function notifyLiveReload(event) {
+function notifyLiveReload (event) {
   tinylr.changed({ body: { files: [path.relative(__dirname, event.path)]}});
 }
 
-gulp.task('livereload', function() {
+gulp.task('livereload', function (done) {
   tinylr = require('tiny-lr')();
   tinylr.listen(35729);
+  done();
 });
 
-var buildHTML = function() {
+var buildHTML = function () {
   gulp.src('index.html')
   .pipe(gulp.dest('dist'));
   gulp.src('components/*')
-  .pipe(gulp.dest('dist/components'));
+  .pipe(gulp.dest('dist/components'))
 }
 
-var bundleVendorCSS = function () {
+var bundleVendorCSS = function (done) {
   gulp.src(['node_modules/font-awesome/css/font-awesome.min.css',
 	   'stylesheets/vendor/*.css'])
   .pipe(concatCss('vendor.css'))
   .pipe(gulp.dest('dist/css'))
   .pipe(uglifycss())
-  .pipe(gulp.dest('dist/css'));
+  .pipe(gulp.dest('dist/css'))
+  .on('end', done);
 };
 
-var processSass = function() {
+var processSass = function (done) {
   gulp.src(['stylesheets/main.scss'])
   .pipe(sass().on('error', sass.logError))
   .pipe(gp_rename('main.css'))
   .pipe(autoprefixer())
   .pipe(uglifycss())
-  .pipe(gulp.dest('dist/css'));
+  .pipe(gulp.dest('dist/css'))
+  .on('end', done);
 };
 
-
-var bundleVendorJS = function() {
+var bundleVendorJS = function (done) {
   gulp.src([
      'js/vendor/jquery-3.2.1.min.js',
      'node_modules/angular/angular.min.js',
@@ -81,16 +84,17 @@ var bundleVendorJS = function() {
       .pipe(concat('vendor.js'))
       .pipe(gulp.dest('dist'))
       .pipe(uglify())
-      .pipe(gulp.dest('dist'));
+      .pipe(gulp.dest('dist'))
+      .on('end', done);
 };
 
-var minifyJS = function () {
-
+var minifyJS = function (done) {
   gulp.src(['js/*.js',
 	   'js/**/*.js',
 	   '!js/vendor/*.js'])
       .pipe(concat('main.js'))
-      .pipe(gulp.dest('dist'));
+      .pipe(gulp.dest('dist'))
+      .on('end', done);
 };
 
 gulp.task('clean-dist', function () {
@@ -98,23 +102,21 @@ gulp.task('clean-dist', function () {
   .pipe(clean());
 });
 
-gulp.task('bundle', function() {
-  bundleVendorCSS();
-  bundleVendorJS();
-  processSass();
-  minifyJS();
+gulp.task('bundle', function (cb) {
+  gulp.series(bundleVendorCSS, bundleVendorJS, processSass, minifyJS, function () {cb();})();
 });
 
-gulp.task('watch', function (cb) {
+gulp.task('watch', function (done) {
   watch('dist/*', notifyLiveReload);
   watch('**/*.html', notifyLiveReload);
   watch('components/*', buildHTML);
   watch('**/*.scss', processSass);
   watch('**/*.scss', notifyLiveReload);
   watch('js/**/*.js', minifyJS);
+  done();
 });
 
-gulp.task('lint', function() {
+gulp.task('lint', function () {
   return gulp.src(['!js/vendor/**/*.js','js/**/*.js'])
   .pipe(jshint('.jshintrc'))
   .pipe(jshint.reporter('jshint-stylish'));
@@ -132,12 +134,12 @@ gulp.task('test-once', function (done) {
     configFile: __dirname + '/karma.conf.js',
     singleRun: true,
     reporters: ['mocha']
-  }, function(error) {
+  }, function (error) {
       done(error);
   });
 });
 
-gulp.task('copy', function(){
+gulp.task('copy', function (done) {
   gulp.src('node_modules/roboto-fontface/fonts/*{Regular,Bold}.*')
   .pipe(gulp.dest('dist/fonts'));
   gulp.src('node_modules/font-awesome/fonts/*.{woff,woff2,eot,svg,ttf}')
@@ -150,13 +152,14 @@ gulp.task('copy', function(){
   .pipe(gulp.dest('dist'));
   gulp.src('README.md')
   .pipe(gulp.dest('dist'));
-  gulp.src('CNAME')
+  gulp.src('CNAME', {allowEmpty: true})
   .pipe(gulp.dest('dist'));
 
   buildHTML();
+  done();
 });
 
-gulp.task('default', ['bundle', 'copy', 'express', 'livereload', 'watch']);
-gulp.task('test', ['lint', 'watch-test']);
-gulp.task('testci', ['lint', 'test-once']);
-gulp.task('build', ['clean-dist', 'bundle', 'copy']);
+gulp.task('default', gulp.series('bundle', 'copy', 'express', 'livereload', 'watch'));
+gulp.task('test', gulp.series('lint', 'watch-test'));
+gulp.task('testci', gulp.series('lint', 'test-once'));
+gulp.task('build', gulp.series('clean-dist', 'bundle', 'copy'));
